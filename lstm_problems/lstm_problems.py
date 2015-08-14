@@ -187,3 +187,57 @@ def multiply(min_length, n_sequences):
     # Sum the entries in the third dimension where the second is 1
     y = np.array([np.prod([x[0] for x in X_n if x[1] == 1]) for X_n in X])
     return X, y, mask
+
+
+def xor(min_length, n_sequences):
+    """ Generate sequences and target values for the "XOR" task, as
+    described in [1]_ section 4.1.  Sequences are two dimensional where the
+    first dimension are binary values sampled uniformly at random from {0, 1}
+    and the second dimension is either -1, 0, or 1: At the first and last
+    steps, it is -1; at one of the first ten steps (``N_1``) it is 1; and at a
+    step between 0 and ``.5*min_length`` (``N_2``) it is also 1.  The goal is
+    to predict ``X_1^X_2`` where ``X_1`` and ``X_2`` are the values of the
+    first dimension at ``N_1`` and ``N_2`` respectively.  For example, the
+    target for the following sequence
+
+    ``|  1 | 0 | 1 | 0 | 0 | ... | 1 | 1 | ... | 0 |  0 |
+      | -1 | 0 | 1 | 0 | 0 |     | 0 | 1 |     | 0 | -1 |``
+
+    would be ``1^1 = 0``.  All generated sequences will be of
+    length ``1.1*min_length``; the returned variable ``mask``
+    can be used to determine which entries are in each sequence.
+
+    Parameters
+    ----------
+    min_length : int
+        Minimum sequence length.
+    n_sequences : int
+        Number of sequences to generate.
+
+    Returns
+    -------
+    X : np.ndarray
+        Input to the network, of shape
+        ``(n_sequences, 1.1*min_length, 2)``, where the last
+        dimension corresponds to the two sequences described above.
+    y : np.ndarray
+        Correct output for each sample, shape ``(n_sequences,)``.
+    mask : np.ndarray
+        A binary matrix of shape ``(n_sequences, 1.1*min_length)``
+        where ``mask[i, j] = 1`` when ``j <= (length of sequence i)``
+        and ``mask[i, j] = 0`` when ``j > (length of sequence i)``.
+
+    References
+    ----------
+    .. [1] James Martens and Ilya Sutskever. "Learning recurrent neural
+    networks with hessian-free optimization." Proceedings of the 28th
+    International Conference on Machine Learning (ICML-11). 2011.
+    """
+    # Get sequences
+    X, mask = gen_masked_sequences(
+        min_length, n_sequences,
+        functools.partial(np.random.choice, a=[0, 1]))
+    # Sum the entries in the third dimension where the second is 1
+    y = np.array([np.bitwise_xor(*[bool(x[0]) for x in X_n if x[1] == 1])
+                  for X_n in X])
+    return X, y, mask
