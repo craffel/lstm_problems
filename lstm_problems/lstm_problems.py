@@ -55,31 +55,35 @@ def gen_masked_sequences(min_length, n_sequences, sample):
         where ``mask[i, j] = 1`` when ``j <= (length of sequence i)``
         and ``mask[i, j] = 0`` when ``j > (length of sequence i)``.
     """
-    # Compute the maximum allowable sequence length
+    # Compute the global maximum sequence length
     max_length = int(np.ceil(1.1*min_length))
-    # Generate X - we'll fill the last dimension later
-    X = np.concatenate([sample(size=(n_sequences, max_length, 1)),
-                        np.zeros((n_sequences, max_length, 1))], axis=-1)
-    mask = np.zeros((n_sequences, max_length))
-    # Compute masks and correct values
-    for n in range(n_sequences):
-        # Randomly choose the sequence length
-        length = np.random.randint(min_length, max_length)
-        # Make the mask for this sample 1 within the range of length
-        mask[n, :length] = 1
-        # Zero out X after the end of the sequence
-        X[n, length:, 0] = 0
-        # Choose N_1
-        N_1 = np.random.randint(1, 10)
-        # Choose N_2, avoiding N_1
-        N_2 = np.random.choice(range(1, N_1) +
-                               range(N_1 + 1, int(length/2 - 1)))
-        # Set the second dimension to 1 at the indices to add
-        X[n, N_1, 1] = 1
-        X[n, N_2, 1] = 1
-        # Set the first and last values of the mask dimension to -1
-        X[n, 0, 1] = -1
-        X[n, length - 1, 1] = -1
+    # Randomly choose a length for each sequence in [min_length, max_length]
+    lengths = np.random.randint(min_length, max_length, n_sequences)
+    # Construct a mask by tiling arange and comparing it to lengths
+    mask = (np.tile(np.arange(max_length), (n_sequences, 1)) <
+            np.tile(lengths, (max_length, 1)).T)
+    # Sample the noise dimension
+    noise_dim = sample(size=(n_sequences, max_length, 1))
+    # Mask out all entries past the end of each sequence
+    noise_dim *= mask[:, :, np.newaxis]
+    # Initialize mask dimension to all zeros
+    mask_dim = np.zeros((n_sequences, max_length, 1))
+    # First entry of each sequence in mask dimension is -1
+    mask_dim[:, 0] = -1
+    # End of sequence in mask dimension is -1
+    mask_dim[np.arange(n_sequences), lengths - 1] = -1
+    # First add index is always between 1 and 10
+    N_1 = np.random.randint(1, 10, n_sequences)
+    # Second add index is always between 1 and length/2
+    # Using max_length instead of length[n] is a WLOG hack
+    N_2 = np.random.choice(range(1, int(max_length/2 - 1)), n_sequences)
+    # If N_1 = N_2 for any sequences, add 1 to avoid
+    N_2[N_2 == N_1] = N_2[N_2 == N_1] + 1
+    # Set the add indices to 1
+    mask_dim[np.arange(n_sequences), N_1] = 1
+    mask_dim[np.arange(n_sequences), N_2] = 1
+    # Concatenate noise and mask dimensions to create data
+    X = np.concatenate([noise_dim, mask_dim], axis=-1)
     return X, mask
 
 
@@ -131,7 +135,7 @@ def add(min_length, n_sequences):
         min_length, n_sequences,
         functools.partial(np.random.uniform, high=1., low=-1.))
     # Sum the entries in the third dimension where the second is 1
-    y = np.array([sum(x[0] for x in X_n if x[1] == 1) for X_n in X])
+    y = np.sum((X[:, :, 0]*(X[:, :, 1] == 1)), axis=1)
     # Normalize targets to the range [0, 1]
     y = .5 + y/4.
     return X, y, mask
@@ -184,8 +188,8 @@ def multiply(min_length, n_sequences):
     X, mask = gen_masked_sequences(
         min_length, n_sequences,
         functools.partial(np.random.uniform, high=1., low=0.))
-    # Sum the entries in the third dimension where the second is 1
-    y = np.array([np.prod([x[0] for x in X_n if x[1] == 1]) for X_n in X])
+    # Multiply the entries in the third dimension where the second is 1
+    y = np.prod((X[:, :, 0]**(X[:, :, 1] == 1)), axis=1)
     return X, y, mask
 
 
@@ -237,7 +241,13 @@ def xor(min_length, n_sequences):
     X, mask = gen_masked_sequences(
         min_length, n_sequences,
         functools.partial(np.random.choice, a=[0, 1]))
-    # Sum the entries in the third dimension where the second is 1
-    y = np.array([np.bitwise_xor(*[bool(x[0]) for x in X_n if x[1] == 1])
-                  for X_n in X])
+    # X[:, :, 1] > 0 constructs a boolean matrix of the rows/columns which have
+    # a 1 in the last dimension of X.  X[X[:, :, 1] > 0, 0] then masks the
+    # entries of the random bit dimension accordingly.  The reshape converts
+    # the resulting array back into a matrix, where entries are picked in
+    # "fortran" order which allows them to be correctly reshaped to (2,
+    # n_sequences).  Finally, the * uses the first dimension as the arguments
+    # to logical_xor
+    y = np.logical_xor(
+        *np.reshape(X[X[:, :, 1] > 0, 0], (2, n_sequences), 'F'))
     return X, y, mask
