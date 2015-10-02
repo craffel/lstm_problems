@@ -27,9 +27,9 @@ import numpy as np
 import functools
 
 
-def gen_masked_sequences(min_length, n_sequences, sample):
+def gen_masked_sequences(min_length, n_sequences, sample, max_length=None):
     """ Generates two-dimensional sequences and masks of length randomly chosen
-    between ``[min_length, 1.1*min_length]`` where one dimension is randomly
+    between ``[min_length, max_length]`` where one dimension is randomly
     sampled using ``sample`` and the other dimension has -1 at the start and
     end of the sequence and has a 1 in the first ten sequence steps and another
     1 before ``min_length/2`` and is 0 otherwise.
@@ -43,6 +43,9 @@ def gen_masked_sequences(min_length, n_sequences, sample):
     sample : function
         Function used to randomly sample values; should accept a keyword
         argument "size" which determines the sampled shape.
+    max_length : int or None
+        Maximum sequence length.  If supplied as `None`,
+        ``int(np.ceil(1.1*min_length))`` will be used.
 
     Returns
     -------
@@ -55,10 +58,15 @@ def gen_masked_sequences(min_length, n_sequences, sample):
         where ``mask[i, j] = 1`` when ``j <= (length of sequence i)``
         and ``mask[i, j] = 0`` when ``j > (length of sequence i)``.
     """
-    # Compute the global maximum sequence length
-    max_length = int(np.ceil(1.1*min_length))
-    # Randomly choose a length for each sequence in [min_length, max_length]
-    lengths = np.random.randint(min_length, max_length, n_sequences)
+    if max_length is None:
+        # Compute the global maximum sequence length
+        max_length = int(np.ceil(1.1*min_length))
+    # When min_length and max_length is the same, make all lengths the same
+    if min_length == max_length:
+        lengths = min_length*np.ones(n_sequences, dtype=int)
+    # Otherwise, randomly choose lengths from [min_length, max_length]
+    else:
+        lengths = np.random.randint(min_length, max_length, n_sequences)
     # Construct a mask by tiling arange and comparing it to lengths
     mask = (np.tile(np.arange(max_length), (n_sequences, 1)) <
             np.tile(lengths, (max_length, 1)).T)
@@ -87,7 +95,7 @@ def gen_masked_sequences(min_length, n_sequences, sample):
     return X, mask
 
 
-def add(min_length, n_sequences):
+def add(min_length, n_sequences, max_length=None):
     """ Generate sequences and target values for the "add" task, as described in
     [1]_ section 5.4.  Sequences are two dimensional where the first dimension
     are values sampled uniformly at random from [-1, 1] and the second
@@ -102,7 +110,7 @@ def add(min_length, n_sequences):
       | -1  |   0  |  1  |  0  |   0  |     |   0  |  1  |     |  0  | -1  |``
 
     would be ``.5 + (.3 + .9)/4 = .8``.  All generated sequences will be of
-    length ``1.1*min_length``; the returned variable ``mask``
+    length ``max_length``; the returned variable ``mask``
     can be used to determine which entries are in each sequence.
 
     Parameters
@@ -111,6 +119,9 @@ def add(min_length, n_sequences):
         Minimum sequence length.
     n_sequences : int
         Number of sequences to generate.
+    max_length : int or None
+        Maximum sequence length.  If supplied as `None`,
+        ``int(np.ceil(1.1*min_length))`` will be used.
 
     Returns
     -------
@@ -133,7 +144,7 @@ def add(min_length, n_sequences):
     # Get sequences
     X, mask = gen_masked_sequences(
         min_length, n_sequences,
-        functools.partial(np.random.uniform, high=1., low=-1.))
+        functools.partial(np.random.uniform, high=1., low=-1.), max_length)
     # Sum the entries in the third dimension where the second is 1
     y = np.sum((X[:, :, 0]*(X[:, :, 1] == 1)), axis=1)
     # Normalize targets to the range [0, 1]
@@ -141,7 +152,7 @@ def add(min_length, n_sequences):
     return X, y, mask
 
 
-def multiply(min_length, n_sequences):
+def multiply(min_length, n_sequences, max_length=None):
     """ Generate sequences and target values for the "multiply" task, as
     described in [1]_ section 5.5.  Sequences are two dimensional where the
     first dimension are values sampled uniformly at random from [0, 1] and the
@@ -156,7 +167,7 @@ def multiply(min_length, n_sequences):
       | -1  |  0  |  1  |  0  |  0  |     |  0  |  1  |     |  0  | -1  |``
 
     would be ``.3*.9 = .27``.  All generated sequences will be of
-    length ``1.1*min_length``; the returned variable ``mask``
+    length ``max_length``; the returned variable ``mask``
     can be used to determine which entries are in each sequence.
 
     Parameters
@@ -165,6 +176,9 @@ def multiply(min_length, n_sequences):
         Minimum sequence length.
     n_sequences : int
         Number of sequences to generate.
+    max_length : int or None
+        Maximum sequence length.  If supplied as `None`,
+        ``int(np.ceil(1.1*min_length))`` will be used.
 
     Returns
     -------
@@ -187,13 +201,13 @@ def multiply(min_length, n_sequences):
     # Get sequences
     X, mask = gen_masked_sequences(
         min_length, n_sequences,
-        functools.partial(np.random.uniform, high=1., low=0.))
+        functools.partial(np.random.uniform, high=1., low=0.), max_length)
     # Multiply the entries in the third dimension where the second is 1
     y = np.prod((X[:, :, 0]**(X[:, :, 1] == 1)), axis=1)
     return X, y, mask
 
 
-def xor(min_length, n_sequences):
+def xor(min_length, n_sequences, max_length=None):
     """ Generate sequences and target values for the "XOR" task, as
     described in [1]_ section 4.1.  Sequences are two dimensional where the
     first dimension are binary values sampled uniformly at random from {0, 1}
@@ -208,7 +222,7 @@ def xor(min_length, n_sequences):
       | -1 | 0 | 1 | 0 | 0 |     | 0 | 1 |     | 0 | -1 |``
 
     would be ``1^1 = 0``.  All generated sequences will be of
-    length ``1.1*min_length``; the returned variable ``mask``
+    length ``max_length``; the returned variable ``mask``
     can be used to determine which entries are in each sequence.
 
     Parameters
@@ -217,6 +231,9 @@ def xor(min_length, n_sequences):
         Minimum sequence length.
     n_sequences : int
         Number of sequences to generate.
+    max_length : int or None
+        Maximum sequence length.  If supplied as `None`,
+        ``int(np.ceil(1.1*min_length))`` will be used.
 
     Returns
     -------
@@ -240,7 +257,7 @@ def xor(min_length, n_sequences):
     # Get sequences
     X, mask = gen_masked_sequences(
         min_length, n_sequences,
-        functools.partial(np.random.choice, a=[0, 1]))
+        functools.partial(np.random.choice, a=[0, 1]), max_length)
     # X[:, :, 1] > 0 constructs a boolean matrix of the rows/columns which have
     # a 1 in the last dimension of X.  X[X[:, :, 1] > 0, 0] then masks the
     # entries of the random bit dimension accordingly.  The reshape converts
